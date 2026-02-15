@@ -7,14 +7,48 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tooltip-container { position: relative; }
+    .tooltip-container .tooltip-text {
+      visibility: hidden;
+      opacity: 0;
+      width: 250px;
+      background-color: #1f2937;
+      color: #fff;
+      text-align: left;
+      border-radius: 8px;
+      padding: 10px 12px;
+      position: absolute;
+      z-index: 100;
+      bottom: 125%;
+      left: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: opacity 0.2s, visibility 0.2s;
+    }
+    .tooltip-container .tooltip-text::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 20px;
+      border-width: 6px;
+      border-style: solid;
+      border-color: #1f2937 transparent transparent transparent;
+    }
+    .tooltip-container:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
   <script>
-    const { useState } = React;
+    const { useState, useRef, useEffect } = React;
 
     function StaffingCalculator() {
-      const [employees, setEmployees] = useState(28000);
+      const [employees, setEmployees] = useState(10000);
       const [parentPct, setParentPct] = useState(15);
       const [uptakePct, setUptakePct] = useState(30);
       const [elderUptakePct, setElderUptakePct] = useState(10);
@@ -24,14 +58,10 @@
       const babyPct = 0.25, toddlerPct = 0.35, over3Pct = 0.40;
       const babyRatio = 3, toddlerRatio = 5, over3Ratio = 8, elderRatio = 8;
       
-      // Standard hours: 7am-7pm (12h), need ~1.5 shifts to cover with breaks/overlap
-      // 24/7: need 3 full shifts, but night shift can have reduced ratios
       const standardShiftMultiplier = 1.5;
-      const nightShiftRatio = 0.5; // 50% of daytime staff for overnight (lower ratios allowed, fewer children)
-      const shiftsFor24h = 2 + nightShiftRatio; // Day + Evening + reduced Night
+      const nightShiftRatio = 0.5;
+      const shiftsFor24h = 2 + nightShiftRatio;
       const shiftMultiplier = is24h ? shiftsFor24h : standardShiftMultiplier;
-      
-      // Eldercare: standard 8am-6pm (10h), or extended 7am-9pm for 24/7 model (no overnight elder care)
       const elderShiftMultiplier = is24h ? 1.8 : 1.3;
       
       const parentEmployees = employees * (parentPct / 100);
@@ -61,32 +91,80 @@
       const totalStaff = totalCareStaff + supportStaff;
 
       const tooltips = {
-        'Total Employees': 'Total workforce at the target organization. Manchester University NHS Foundation Trust has ~28,000 employees.',
-        'Employees with young children': 'Estimated 10-20% of workforce has children under 5. NHS has high female workforce (77%), often working-age, suggesting ~15% is reasonable.',
-        'Childcare uptake rate': 'Typical workplace nursery uptake is 20-40%. Higher rates possible with subsidies and convenient location. 30% is a moderate estimate.',
-        'Employees with elder dependents': 'Research shows more UK employees have elderly dependents than child dependents. ~20% is based on sandwich generation data.',
-        'Eldercare uptake rate': 'New service with lower initial awareness. 10% is conservative; may grow as service proves value.'
+        employees: 'Total workforce at the target organization. Manchester University NHS Foundation Trust has ~28,000 employees.',
+        parentPct: 'Estimated 10-20% of workforce has children under 5. NHS has high female workforce (77%), often working-age, suggesting ~15% is reasonable.',
+        uptakePct: 'Typical workplace nursery uptake is 20-40%. Higher rates possible with subsidies and convenient location. 30% is a moderate estimate.',
+        elderDepPct: 'Research shows more UK employees have elderly dependents than child dependents. ~20% is based on sandwich generation data.',
+        elderUptakePct: 'New service with lower initial awareness. 10% is conservative; may grow as service proves value.',
+        hours: is24h 
+          ? '24/7 MODEL: Childcare runs 3 shifts (day 7am-3pm, evening 3pm-11pm, night 11pm-7am). Night shift has reduced ratios (~50% staff). Eldercare extended to 7am-9pm (no overnight).'
+          : 'STANDARD MODEL: Childcare 7am-7pm (12 hours), requiring ~1.5x base staff for shift coverage. Eldercare 8am-6pm with 1.3x multiplier.',
+        childAge: 'Age distribution: 25% babies (0-2), 35% toddlers (2-3), 40% over 3 years. Based on typical working parent demographics.',
+        eldercare: 'Elder day services for socially active older adults (not clinical care). Staff ratio ~1:8. ' + (is24h ? 'Extended hours 7am-9pm.' : 'Standard hours 8am-6pm.'),
+        support: 'Support staff includes: facility manager, admin/reception, kitchen staff, cleaners, and intergenerational programme coordinators.'
       };
 
-      const childAgeTooltip = 'Age distribution assumption: 25% babies (0-2), 35% toddlers (2-3), 40% over 3 years. Based on typical working parent demographics.';
-      
-      const hoursTooltip = is24h 
-        ? '24/7 MODEL: Childcare runs 3 shifts (day 7am-3pm, evening 3pm-11pm, night 11pm-7am). Night shift has reduced ratios (~50% staff) as fewer children and relaxed regulatory requirements for sleeping children. Eldercare extended to 7am-9pm (no overnight).'
-        : 'STANDARD MODEL: Childcare 7am-7pm (12 hours), requiring ~1.5x base staff for shift coverage and breaks. Eldercare 8am-6pm (10 hours) with 1.3x multiplier.';
+      const Tooltip = ({ text, children }) => (
+        React.createElement('div', { className: 'tooltip-container inline' },
+          children,
+          React.createElement('div', { className: 'tooltip-text' }, text)
+        )
+      );
 
-      const Slider = ({ label, value, onChange, min, max, unit = '%' }) => (
-        React.createElement('div', { className: 'mb-4' },
-          React.createElement('div', { className: 'flex justify-between text-sm mb-1' },
-            React.createElement('span', { className: 'text-gray-600 cursor-help border-b border-dotted border-gray-400', title: tooltips[label] }, label),
-            React.createElement('span', { className: 'font-medium text-gray-900' }, value.toLocaleString() + unit)
+      const Slider = ({ label, value, onValueChange, min, max, unit, tooltipKey }) => {
+        const inputRef = React.useRef(null);
+        
+        React.useEffect(() => {
+          if (inputRef.current && document.activeElement !== inputRef.current) {
+            inputRef.current.value = value;
+          }
+        }, [value]);
+
+        const handleBlur = (e) => {
+          const parsed = Number(e.target.value);
+          if (!isNaN(parsed)) {
+            const clamped = Math.max(min, Math.min(max, parsed));
+            onValueChange(clamped);
+            e.target.value = clamped;
+          } else {
+            e.target.value = value;
+          }
+        };
+        
+        const handleKeyDown = (e) => {
+          if (e.key === 'Enter') {
+            e.target.blur();
+          }
+        };
+
+        return React.createElement('div', { className: 'mb-4' },
+          React.createElement('div', { className: 'flex justify-between items-center text-sm mb-1' },
+            React.createElement(Tooltip, { text: tooltips[tooltipKey] },
+              React.createElement('span', { className: 'text-gray-600 cursor-help border-b border-dotted border-gray-400' }, label)
+            ),
+            React.createElement('div', { className: 'flex items-center' },
+              React.createElement('input', {
+                ref: inputRef,
+                type: 'text',
+                defaultValue: value,
+                onBlur: handleBlur,
+                onKeyDown: handleKeyDown,
+                className: 'w-20 text-right font-medium text-gray-900 border border-gray-300 rounded px-2 py-1 text-sm'
+              }),
+              unit && React.createElement('span', { className: 'text-gray-500 ml-1 w-4' }, unit)
+            )
           ),
           React.createElement('input', {
             type: 'range', min, max, value,
-            onChange: e => onChange(Number(e.target.value)),
+            onChange: e => {
+              const val = Number(e.target.value);
+              onValueChange(val);
+              if (inputRef.current) inputRef.current.value = val;
+            },
             className: 'w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600'
           })
-        )
-      );
+        );
+      };
 
       return React.createElement('div', { className: 'min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 p-6' },
         React.createElement('div', { className: 'max-w-4xl mx-auto' },
@@ -98,30 +176,32 @@
             React.createElement('div', { className: 'bg-white rounded-xl shadow-sm p-6 border border-gray-100' },
               React.createElement('h2', { className: 'font-semibold text-gray-800 mb-4' }, 'Parameters'),
               
-              React.createElement('div', { className: 'mb-5 p-3 rounded-lg border-2 ' + (is24h ? 'border-amber-400 bg-amber-50' : 'border-indigo-200 bg-indigo-50') },
-                React.createElement('div', { className: 'flex items-center justify-between cursor-help', title: hoursTooltip },
-                  React.createElement('span', { className: 'font-medium text-gray-700 border-b border-dotted border-gray-400' }, 'Operating Hours'),
+              React.createElement('div', { className: 'mb-5 p-3 rounded-lg border-2 ' + (is24h ? 'border-indigo-400 bg-indigo-50' : 'border-amber-400 bg-amber-50') },
+                React.createElement('div', { className: 'flex items-center justify-between' },
+                  React.createElement(Tooltip, { text: tooltips.hours },
+                    React.createElement('span', { className: 'font-medium text-gray-700 cursor-help border-b border-dotted border-gray-400' }, 'Operating Hours')
+                  ),
                   React.createElement('div', { className: 'flex gap-2' },
                     React.createElement('button', {
                       onClick: () => setIs24h(false),
-                      className: 'px-3 py-1 rounded text-sm font-medium transition ' + (!is24h ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border')
+                      className: 'px-3 py-1 rounded text-sm font-medium transition ' + (!is24h ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 border')
                     }, '7am–7pm'),
                     React.createElement('button', {
                       onClick: () => setIs24h(true),
-                      className: 'px-3 py-1 rounded text-sm font-medium transition ' + (is24h ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 border')
+                      className: 'px-3 py-1 rounded text-sm font-medium transition ' + (is24h ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border')
                     }, '24/7')
                   )
                 ),
-                React.createElement('div', { className: 'text-xs mt-2 ' + (is24h ? 'text-amber-700' : 'text-indigo-600') },
+                React.createElement('div', { className: 'text-xs mt-2 ' + (is24h ? 'text-indigo-700' : 'text-amber-700') },
                   is24h ? 'Shift coverage: Day + Evening + Night (reduced). Elder: 7am-9pm.' : 'Standard hours with 1.5x shift coverage. Elder: 8am-6pm.'
                 )
               ),
               
-              React.createElement(Slider, { label: 'Total Employees', value: employees, onChange: setEmployees, min: 0, max: 30000, unit: '' }),
-              React.createElement(Slider, { label: 'Employees with young children', value: parentPct, onChange: setParentPct, min: 5, max: 30 }),
-              React.createElement(Slider, { label: 'Childcare uptake rate', value: uptakePct, onChange: setUptakePct, min: 10, max: 80 }),
-              React.createElement(Slider, { label: 'Employees with elder dependents', value: elderDepPct, onChange: setElderDepPct, min: 5, max: 40 }),
-              React.createElement(Slider, { label: 'Eldercare uptake rate', value: elderUptakePct, onChange: setElderUptakePct, min: 5, max: 50 }),
+              React.createElement(Slider, { label: 'Total Employees', value: employees, onValueChange: setEmployees, min: 0, max: 30000, unit: '', tooltipKey: 'employees' }),
+              React.createElement(Slider, { label: 'Employees with young children', value: parentPct, onValueChange: setParentPct, min: 5, max: 30, unit: '%', tooltipKey: 'parentPct' }),
+              React.createElement(Slider, { label: 'Childcare uptake rate', value: uptakePct, onValueChange: setUptakePct, min: 10, max: 80, unit: '%', tooltipKey: 'uptakePct' }),
+              React.createElement(Slider, { label: 'Employees with elder dependents', value: elderDepPct, onValueChange: setElderDepPct, min: 5, max: 40, unit: '%', tooltipKey: 'elderDepPct' }),
+              React.createElement(Slider, { label: 'Eldercare uptake rate', value: elderUptakePct, onValueChange: setElderUptakePct, min: 5, max: 50, unit: '%', tooltipKey: 'elderUptakePct' }),
               
               React.createElement('div', { className: 'mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-500' },
                 React.createElement('strong', null, 'Ratios (England): '), 'Babies 1:3 | Toddlers 1:5 | Over 3s 1:8 | Elders ~1:8',
@@ -131,19 +211,21 @@
             ),
             React.createElement('div', { className: 'space-y-4' },
               React.createElement('div', { className: 'bg-white rounded-xl shadow-sm p-6 border border-gray-100' },
-                React.createElement('h2', { className: 'font-semibold text-gray-800 mb-4 cursor-help border-b border-dotted border-gray-400 inline-block', title: childAgeTooltip }, 'Childcare Breakdown'),
+                React.createElement(Tooltip, { text: tooltips.childAge },
+                  React.createElement('h2', { className: 'font-semibold text-gray-800 mb-4 cursor-help border-b border-dotted border-gray-400 inline-block' }, 'Childcare Breakdown')
+                ),
                 React.createElement('div', { className: 'grid grid-cols-3 gap-3 text-center text-sm' },
-                  React.createElement('div', { className: 'bg-pink-50 rounded-lg p-3', title: 'Babies (0-2 years): Assumed 25% of children. Requires 1:3 staff ratio per England regulations.' },
+                  React.createElement('div', { className: 'bg-pink-50 rounded-lg p-3' },
                     React.createElement('div', { className: 'font-bold text-pink-700' }, babies),
                     React.createElement('div', { className: 'text-gray-500' }, 'Babies'),
                     React.createElement('div', { className: 'text-xs text-pink-600' }, babyStaff + ' staff')
                   ),
-                  React.createElement('div', { className: 'bg-orange-50 rounded-lg p-3', title: 'Toddlers (2-3 years): Assumed 35% of children. Requires 1:5 staff ratio per England regulations.' },
+                  React.createElement('div', { className: 'bg-orange-50 rounded-lg p-3' },
                     React.createElement('div', { className: 'font-bold text-orange-700' }, toddlers),
                     React.createElement('div', { className: 'text-gray-500' }, 'Toddlers'),
                     React.createElement('div', { className: 'text-xs text-orange-600' }, toddlerStaff + ' staff')
                   ),
-                  React.createElement('div', { className: 'bg-green-50 rounded-lg p-3', title: 'Over 3s (3-5 years): Assumed 40% of children. Requires 1:8 staff ratio per England regulations.' },
+                  React.createElement('div', { className: 'bg-green-50 rounded-lg p-3' },
                     React.createElement('div', { className: 'font-bold text-green-700' }, over3),
                     React.createElement('div', { className: 'text-gray-500' }, 'Over 3s'),
                     React.createElement('div', { className: 'text-xs text-green-600' }, over3Staff + ' staff')
@@ -155,7 +237,9 @@
                 )
               ),
               React.createElement('div', { className: 'bg-white rounded-xl shadow-sm p-6 border border-gray-100' },
-                React.createElement('h2', { className: 'font-semibold text-gray-800 mb-4 cursor-help border-b border-dotted border-gray-400 inline-block', title: 'Elder day services for socially active older adults (not high-intensity clinical care). Staff ratio ~1:8 based on activity-focused day care benchmarks. ' + (is24h ? 'Extended hours 7am-9pm to support shift workers, but no overnight care.' : 'Standard hours 8am-6pm.') }, 'Eldercare'),
+                React.createElement(Tooltip, { text: tooltips.eldercare },
+                  React.createElement('h2', { className: 'font-semibold text-gray-800 mb-4 cursor-help border-b border-dotted border-gray-400 inline-block' }, 'Eldercare')
+                ),
                 React.createElement('div', { className: 'flex justify-between items-center' },
                   React.createElement('div', null,
                     React.createElement('div', { className: 'text-2xl font-bold text-purple-700' }, elderUsers),
@@ -168,27 +252,29 @@
                 ),
                 React.createElement('div', { className: 'mt-2 text-xs text-gray-400' }, is24h ? 'Hours: 7am–9pm (extended)' : 'Hours: 8am–6pm (standard)')
               ),
-              React.createElement('div', { className: (is24h ? 'bg-amber-500' : 'bg-indigo-600') + ' rounded-xl shadow-lg p-6 text-white' },
+              React.createElement('div', { className: (is24h ? 'bg-indigo-600' : 'bg-amber-500') + ' rounded-xl shadow-lg p-6 text-white' },
                 React.createElement('h2', { className: 'font-semibold mb-4' }, 'Total Staffing Requirement'),
                 React.createElement('div', { className: 'grid grid-cols-3 gap-4 text-center' },
                   React.createElement('div', null,
                     React.createElement('div', { className: 'text-3xl font-bold' }, totalChildcareStaff),
-                    React.createElement('div', { className: (is24h ? 'text-amber-100' : 'text-indigo-200') + ' text-sm' }, 'Childcare')
+                    React.createElement('div', { className: (is24h ? 'text-indigo-200' : 'text-amber-100') + ' text-sm' }, 'Childcare')
                   ),
                   React.createElement('div', null,
                     React.createElement('div', { className: 'text-3xl font-bold' }, elderStaff),
-                    React.createElement('div', { className: (is24h ? 'text-amber-100' : 'text-indigo-200') + ' text-sm' }, 'Eldercare')
+                    React.createElement('div', { className: (is24h ? 'text-indigo-200' : 'text-amber-100') + ' text-sm' }, 'Eldercare')
                   ),
                   React.createElement('div', null,
                     React.createElement('div', { className: 'text-3xl font-bold' }, supportStaff),
-                    React.createElement('div', { className: (is24h ? 'text-amber-100' : 'text-indigo-200') + ' text-sm' }, 'Support*')
+                    React.createElement('div', { className: (is24h ? 'text-indigo-200' : 'text-amber-100') + ' text-sm' }, 'Support*')
                   )
                 ),
-                React.createElement('div', { className: 'mt-4 pt-4 border-t ' + (is24h ? 'border-amber-400' : 'border-indigo-500') + ' text-center' },
+                React.createElement('div', { className: 'mt-4 pt-4 border-t ' + (is24h ? 'border-indigo-500' : 'border-amber-400') + ' text-center' },
                   React.createElement('div', { className: 'text-4xl font-bold' }, totalStaff),
-                  React.createElement('div', { className: is24h ? 'text-amber-100' : 'text-indigo-200' }, 'Total Care Personnel')
+                  React.createElement('div', { className: is24h ? 'text-indigo-200' : 'text-amber-100' }, 'Total Care Personnel')
                 ),
-                React.createElement('div', { className: 'mt-3 text-xs ' + (is24h ? 'text-amber-200' : 'text-indigo-300'), title: 'Support staff includes: facility manager, admin/reception, kitchen staff (if meals served), cleaners, and intergenerational programme coordinators. Higher % for 24/7 due to shift coordination.' }, '*Support includes management, admin, kitchen, facilities (' + (is24h ? '~25%' : '~20%') + ')')
+                React.createElement(Tooltip, { text: tooltips.support },
+                  React.createElement('div', { className: 'mt-3 text-xs ' + (is24h ? 'text-indigo-300' : 'text-amber-200') + ' cursor-help' }, '*Support includes management, admin, kitchen, facilities (' + (is24h ? '~25%' : '~20%') + ')')
+                )
               )
             )
           )
